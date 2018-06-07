@@ -1,0 +1,247 @@
+<html>
+    <head>
+        <script>
+            /*
+            [Original jQuery card reader] Copyright 2009-2010 Jonathan Stoppani (http://garetjax.info/)
+            [Vanilla JS version and UI] Copyright 2018 David Moss
+
+            Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+            The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+            THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+            */
+            var CardReader = function (error_start, track_start, track_end, timeout) {
+                this.error_start = error_start || "é";
+                this.track_start = track_start || "%";
+                this.track_end = track_end || ";";
+                this.timeout = timeout || 100;
+
+                this.error_start = this.error_start.charCodeAt(0);
+                this.track_start = this.track_start.charCodeAt(0);
+                this.track_end = this.track_end.charCodeAt(0);
+
+                this.started = false;
+                this.finished = false;
+                this.isError = false;
+                this.input = "";
+                this.timer = undefined;
+                this.callbacks = [];
+                this.errbacks = [];
+                this.validators = [];
+                this.isDispatching = false;
+            };
+
+            CardReader.prototype = {
+                dispatch: function (data, isError) {
+                    if (!isError) {
+                        for (var cb in this.validators) {
+                            if (!this.validators[cb](data)) {
+                                isError = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (this.isDispatching) {
+                        if (isError) {
+                            console.log("Immediate error!");
+                            return;
+                        } else {
+                            clearTimeout(this.isDispatching);
+                        }
+                    }
+
+                    reader = this;
+
+                    this.isDispatching = setTimeout(function () {
+                        console.log("Error timeout cleared");
+                        reader.isDispatching = false;
+                    }, 200);
+
+                    if (isError) {
+                        for (var cb in this.errbacks) {
+                            this.errbacks[cb](this.input);
+                        }
+                    } else {
+                        for (var cb in this.callbacks) {
+                            this.callbacks[cb](this.input);
+                        }
+                    }
+                },
+
+                readObserver: function (e) {
+                    var ob = this;
+
+                    if (!this.started && (e.which === this.track_start || e.which === this.error_start)) {
+                        e.stopImmediatePropagation();
+                        e.preventDefault();
+
+                        this.started = true;
+                        this.isError = e.which === this.error_start;
+
+                        this.timer = setTimeout(function () {
+                            ob.started = false;
+                            ob.finished = false;
+                            ob.isError = false;
+                            ob.input = "";
+                        }, this.timeout);
+                    } else if (this.started && e.which === this.track_end) {
+                        e.stopImmediatePropagation();
+                        e.preventDefault();
+
+                        this.finished = true;
+
+                        clearTimeout(this.timer);
+                        this.timer = setTimeout(function () {
+                            ob.started = false;
+                            ob.finished = false;
+                            ob.isError = false;
+                            ob.input = "";
+                        }, this.timeout);
+                    } else if (this.started && this.finished && e.which === 13) {
+                        e.stopImmediatePropagation();
+                        e.preventDefault();
+
+                        this.dispatch(this.input, this.isError);
+
+                        this.started = false;
+                        this.finished = false;
+                        this.isError = false;
+                        this.input = "";
+
+                        clearTimeout(this.timer);
+
+                    } else if (this.started) {
+                        e.stopImmediatePropagation();
+                        e.preventDefault();
+
+                        this.input += String.fromCharCode(e.which);
+
+                        clearTimeout(this.timer);
+                        this.timer = setTimeout(function () {
+                            ob.started = false;
+                            ob.finished = false;
+                            ob.isError = false;
+                            ob.input = "";
+                        }, this.timeout);
+                    }
+                },
+
+                observe: function (element) {
+                    var func = this;
+
+                    element.onkeypress = function (e) {
+                        CardReader.prototype.readObserver.apply(func, arguments);
+                    };
+                },
+
+                validate: function (validator) {
+                    this.validators.push(validator);
+                },
+
+                cardRead: function (callback) {
+                    this.callbacks.push(callback);
+                },
+
+                cardError: function (errback) {
+                    this.errbacks.push(errback);
+                },
+            }
+
+            document.addEventListener("DOMContentLoaded", function() {
+                var reader = new CardReader();
+                reader.observe(window);
+                reader.cardError(function () {
+                    alert("A read error occurred");
+                });
+
+                // Callback in case of a successful reading operation
+                reader.cardRead(function (value) {
+                    data = value.split('^');
+                    exp = data[2].substring(2, 4) + '/20' + data[2].substring(0, 2);
+                    document.getElementById('cardNumber').value = data[0].substring(1);
+                    document.getElementById('cardExpiry').value = exp;
+                    document.getElementById('cardName').value = data[1];
+                });
+            });
+
+            /* End card reader */
+
+            function copyToClipboard(elem) {
+                elem.setSelectionRange(0, elem.value.length);
+                document.execCommand("copy");
+            }
+
+            document.addEventListener("DOMContentLoaded", function() {
+                document.getElementById("copyName").addEventListener("click", function() {
+                    copyToClipboard(document.getElementById("cardName"));
+                    return false;
+                });
+                 document.getElementById("copyNumber").addEventListener("click", function() {
+                    copyToClipboard(document.getElementById("cardNumber"));
+                    return false;
+                });
+                 document.getElementById("copyExpiry").addEventListener("click", function() {
+                    copyToClipboard(document.getElementById("cardExpiry"));
+                    return false;
+                });
+            });
+        </script>
+        <style>
+            body {
+                padding: 1rem;
+                font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+                color: #333;
+            }
+            h3 {
+                font-size: 1.5rem;
+                margin: 0 0 1rem 0;
+            }
+            .input-group {
+                margin: 0 0 1rem 0;
+            }
+            input {
+                margin: 0;
+                font-size: 1.5rem;
+                font-family: monospace;
+                padding: 0.35rem 1rem;
+                border-radius: 0.3rem;
+                border: 1px solid #ccc;
+            }
+            button {
+                padding: 0.5rem 1rem;
+                margin: 0;
+                font-size: 1rem;
+                border-radius: 0.3rem;
+                border: 1px solid #ccc;
+                background-color: white;
+                color: #333;
+            }
+            .input-group button {
+                color: white;
+                background-color: #557799;
+                border-color: #557799;
+            }
+            .input-group button:active {
+                  background-color: #335577;
+            }
+        </style>
+    </head>
+    <body>
+        <h3>Magstripe reader</h3>
+        <form>
+            <div class="input-group">
+                <input autocomplete="off" id="cardName" size="25" type="text" />
+                <button class="btn-primary" id="copyName" type="button">Copy</button>
+            </div>
+            <div class="input-group">
+                <input autocomplete="off" id="cardNumber" size="25" type="text" />
+                <button class="btn-primary" id="copyNumber" type="button">Copy</button>
+            </div>
+            <div class="input-group">
+                <input autocomplete="off" id="cardExpiry" size="25" type="text" />
+                <button class="btn-primary" id="copyExpiry" type="button">Copy</button>
+            </div>
+            <button type="reset">Clear</button>
+        </form>
+    </body>
+</html>
